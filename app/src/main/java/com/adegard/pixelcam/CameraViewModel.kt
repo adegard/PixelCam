@@ -107,10 +107,13 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             _lastZoomLiveData?.removeObserver(old)
         }
         _lastZoomLiveData = camera?.cameraInfo?.zoomState
-        if (_lastZoomLiveData != null) {
-            zoomObserver = Observer<ZoomState> { state -> _zoomState.value = state }
-            _lastZoomLiveData?.observeForever(zoomObserver)
+        val liveData = _lastZoomLiveData
+        if (liveData != null) {
+            val observer = Observer<ZoomState> { state -> _zoomState.value = state }
+            zoomObserver = observer
+            liveData.observeForever(observer)
         } else {
+            zoomObserver = null
             _zoomState.value = null
         }
     }
