@@ -3,7 +3,10 @@ package com.adegard.pixelcam.ui
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
+import android.util.Size
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.ImageCapture
@@ -23,7 +26,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -31,21 +33,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,7 +51,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
@@ -66,7 +61,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.adegard.pixelcam.CameraViewModel
-import com.adegard.pixelcam.PhotoProcessor
 import com.adegard.pixelcam.PhotographicStyle
 import com.adegard.pixelcam.R
 
@@ -126,9 +120,9 @@ private fun CameraContent(viewModel: CameraViewModel) {
     val lens by viewModel.lens.collectAsStateWithLifecycle()
     val flash by viewModel.flash.collectAsStateWithLifecycle()
     val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
-    val pending by viewModel.pendingCapture.collectAsStateWithLifecycle()
     val availableModes by viewModel.availableModes.collectAsStateWithLifecycle()
     val zoomState by viewModel.zoomState.collectAsStateWithLifecycle()
+    val lastPhotoUri by viewModel.lastPhotoUri.collectAsStateWithLifecycle()
 
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
 
@@ -172,7 +166,11 @@ private fun CameraContent(viewModel: CameraViewModel) {
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Color.Black.copy(alpha = 0.45f), Color.Transparent, Color.Black.copy(alpha = 0.6f))
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.45f),
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.6f)
+                        )
                     )
                 )
         ) {
@@ -217,19 +215,13 @@ private fun CameraContent(viewModel: CameraViewModel) {
 
             BottomControls(
                 isBusy = isBusy,
-                onCapture = viewModel::capture
+                thumbnailUri = lastPhotoUri,
+                onCapture = viewModel::capture,
+                onOpenThumbnail = { uri -> openPhoto(context, uri) }
             )
 
             Spacer(Modifier.height(16.dp))
         }
-    }
-
-    pending?.let { capture ->
-        ResultOverlay(
-            capture = capture,
-            viewModel = viewModel,
-            onDismiss = viewModel::dismissPendingCapture
-        )
     }
 }
 
@@ -338,7 +330,7 @@ private fun ModeSelector(
     ) {
         Spacer(Modifier.width(12.dp))
         modes.forEach { m ->
-            val supported = availability[m] ?: (m.extensionMode == null)
+            val supported = availability[m] ?: true
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
@@ -370,14 +362,23 @@ private fun ModeSelector(
 @Composable
 private fun BottomControls(
     isBusy: Boolean,
-    onCapture: () -> Unit
+    thumbnailUri: Uri?,
+    onCapture: () -> Unit,
+    onOpenThumbnail: (Uri) -> Unit
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center,
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Spacer(Modifier.weight(1f))
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 28.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            LastPhotoThumbnail(uri = thumbnailUri, onClick = onOpenThumbnail)
+        }
 
         Box(
             modifier = Modifier
@@ -401,101 +402,41 @@ private fun BottomControls(
 }
 
 @Composable
-private fun ResultOverlay(
-    capture: CameraViewModel.PendingCapture,
-    viewModel: CameraViewModel,
-    onDismiss: () -> Unit
-) {
-    val context = LocalContext.current
-    var style by remember(capture) { mutableStateOf(capture.style) }
-    val processed = remember(capture.raw, style) {
-        PhotoProcessor.applyStyle(capture.raw, style)
+private fun LastPhotoThumbnail(uri: Uri?, onClick: (Uri) -> Unit) {
+    if (uri == null) {
+        Spacer(Modifier.size(52.dp))
+        return
     }
-
-    Surface(
-        color = Color.Black,
-        modifier = Modifier.fillMaxSize()
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        Icons.Filled.Close,
-                        contentDescription = "Retake",
-                        tint = Color.White
-                    )
-                }
-                Text(
-                    "${capture.mode.label} · ${style.displayName}",
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelLarge
-                )
-                IconButton(onClick = {
-                    val uri = viewModel.save(processed, capture.mode, style)
-                    if (uri != null) viewModel.toast("Saved to Photos")
-                }) {
-                    Icon(
-                        Icons.Filled.Check,
-                        contentDescription = "Save",
-                        tint = Color.White
-                    )
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                Image(
-                    bitmap = processed.asImageBitmap(),
-                    contentDescription = "Captured photo",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 4.dp)
-                )
-            }
-
-            StyleSelector(selected = style, onSelect = { style = it })
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 32.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Button(
-                    onClick = {
-                        val uri = viewModel.save(processed, capture.mode, style)
-                        if (uri != null) sharePhoto(context, uri)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A2A35))
-                ) {
-                    Icon(Icons.Filled.Share, contentDescription = null, tint = Color.White)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Share", color = Color.White)
-                }
-            }
+    val context = LocalContext.current
+    val thumbnail by produceState<Bitmap?>(initialValue = null, uri) {
+        value = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            runCatching {
+                context.contentResolver.loadThumbnail(uri, Size(128, 128), null)
+            }.getOrNull()
+        } else {
+            null
         }
+    }
+    val bitmap = thumbnail
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap.asImageBitmap(),
+            contentDescription = "Last photo",
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .border(2.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(10.dp))
+                .clickable { onClick(uri) }
+        )
+    } else {
+        Spacer(Modifier.size(52.dp))
     }
 }
 
-private fun sharePhoto(context: android.content.Context, uri: Uri) {
-    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-        type = "image/jpeg"
-        putExtra(Intent.EXTRA_STREAM, uri)
+private fun openPhoto(context: android.content.Context, uri: Uri) {
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, "image/jpeg")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    context.startActivity(Intent.createChooser(shareIntent, "Share photo"))
+    context.startActivity(intent)
 }

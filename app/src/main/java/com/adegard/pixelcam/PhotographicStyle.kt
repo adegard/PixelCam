@@ -27,7 +27,7 @@ enum class PhotographicStyle(val displayName: String) {
 
     private val saturationFactor: Float
         get() = when (this) {
-            STANDARD -> 1.10f
+            STANDARD -> 1.16f
             VIBRANT -> 1.38f
             WARM -> 1.08f
             COOL -> 1.08f
@@ -37,7 +37,7 @@ enum class PhotographicStyle(val displayName: String) {
 
     private val contrastFactor: Float
         get() = when (this) {
-            STANDARD -> 1.08f
+            STANDARD -> 1.12f
             VIBRANT -> 1.14f
             WARM -> 1.06f
             COOL -> 1.06f
@@ -58,9 +58,9 @@ enum class PhotographicStyle(val displayName: String) {
 
     private fun tintMatrix(): ColorMatrix = when (this) {
         STANDARD -> ColorMatrix(floatArrayOf(
-            1.02f, 0f, 0f, 0f, 3f,
-            0f, 1.0f, 0f, 0f, 1f,
-            0f, 0f, 0.97f, 0f, -3f,
+            1.03f, 0f, 0f, 0f, 4f,
+            0f, 1.01f, 0f, 0f, 1f,
+            0f, 0f, 0.97f, 0f, -4f,
             0f, 0f, 0f, 1f, 0f
         ))
         WARM -> ColorMatrix(floatArrayOf(

@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class CameraViewModel(application: Application) : AndroidViewModel(application) {
@@ -35,12 +36,6 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         NIGHT("Night", ExtensionMode.NIGHT),
         PORTRAIT("Portrait", ExtensionMode.BOKEH)
     }
-
-    data class PendingCapture(
-        val raw: Bitmap,
-        val mode: CaptureMode,
-        val style: PhotographicStyle
-    )
 
     private val _mode = MutableStateFlow(CaptureMode.PHOTO)
     val mode: StateFlow<CaptureMode> = _mode.asStateFlow()
@@ -60,8 +55,8 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     private val _isBusy = MutableStateFlow(false)
     val isBusy: StateFlow<Boolean> = _isBusy.asStateFlow()
 
-    private val _pendingCapture = MutableStateFlow<PendingCapture?>(null)
-    val pendingCapture: StateFlow<PendingCapture?> = _pendingCapture.asStateFlow()
+    private val _lastPhotoUri = MutableStateFlow<Uri?>(null)
+    val lastPhotoUri: StateFlow<Uri?> = _lastPhotoUri.asStateFlow()
 
     private val _zoomState = MutableStateFlow<ZoomState?>(null)
     val zoomState: StateFlow<ZoomState?> = _zoomState.asStateFlow()
@@ -71,6 +66,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
 
     private var controller: CameraController? = null
     private var zoomObserver: Observer<ZoomState>? = null
+    private var lastZoomLiveData: androidx.lifecycle.LiveData<ZoomState>? = null
 
     val isFlashSupported: Boolean
         get() = _mode.value == CaptureMode.PHOTO
@@ -80,7 +76,8 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         val c = CameraController(getApplication<Application>(), lifecycleOwner)
         controller = c
         viewModelScope.launch {
-            c.initialize()
+            runCatching { c.initialize() }
+                .onFailure { emitEvent("Camera init failed: ${it.message}") }
             refreshAvailability()
         }
     }
@@ -89,25 +86,30 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         val c = controller ?: return
         val back = mutableMapOf<CaptureMode, Boolean>()
         for (mode in CaptureMode.entries) {
-            back[mode] = mode.extensionMode == null ||
-                c.isExtensionAvailable(CameraSelector.LENS_FACING_BACK, mode)
+            if (mode.extensionMode == null) {
+                back[mode] = true
+            } else {
+                back[mode] = c.isExtensionAvailable(CameraSelector.LENS_FACING_BACK, mode)
+            }
         }
         _availableModes.value = back
+        Log.d(TAG, "Mode availability: $back")
     }
 
     fun bindPreview(view: PreviewView) {
         viewModelScope.launch {
-            val camera = controller?.bind(view, _lens.value, _mode.value)
-            observeZoom(camera)
+            runCatching { controller?.bind(view, _lens.value, _mode.value) }
+                .onFailure { emitEvent("Camera error: ${it.message}") }
+                .onSuccess { observeZoom(it) }
         }
     }
 
     private fun observeZoom(camera: androidx.camera.core.Camera?) {
         zoomObserver?.let { old ->
-            _lastZoomLiveData?.removeObserver(old)
+            lastZoomLiveData?.removeObserver(old)
         }
-        _lastZoomLiveData = camera?.cameraInfo?.zoomState
-        val liveData = _lastZoomLiveData
+        lastZoomLiveData = camera?.cameraInfo?.zoomState
+        val liveData = lastZoomLiveData
         if (liveData != null) {
             val observer = Observer<ZoomState> { state -> _zoomState.value = state }
             zoomObserver = observer
@@ -118,13 +120,10 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private var _lastZoomLiveData: androidx.lifecycle.LiveData<ZoomState>? = null
-
     /** Applies a zoom scale factor (e.g. from a pinch gesture) clamped to the camera range. */
     fun zoomBy(scale: Float) {
         val state = _zoomState.value ?: return
-        val target = state.zoomRatio * scale
-        setZoom(target)
+        setZoom(state.zoomRatio * scale)
     }
 
     /** Sets an absolute zoom ratio, clamped to the camera range. */
@@ -139,9 +138,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setMode(mode: CaptureMode) {
-        val supported = _availableModes.value[mode] ?: (mode.extensionMode == null)
-        if (!supported) {
-            emitEvent("${mode.label} mode is not supported on this device")
+        val knownUnsupported = _availableModes.value[mode] == false
+        if (knownUnsupported) {
+            emitEvent("${mode.label} is not supported on this device")
             return
         }
         if (_mode.value == mode) return
@@ -168,6 +167,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         _flash.value = ImageCapture.FLASH_MODE_OFF
     }
 
+    /** Captures and automatically saves the photo to the gallery with the current style applied. */
     fun capture() {
         val c = controller ?: return
         if (_isBusy.value) return
@@ -184,9 +184,20 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 viewModelScope.launch(Dispatchers.Default) {
                     try {
                         val raw = PhotoProcessor.loadScaled(file)
-                        _pendingCapture.value = PendingCapture(raw, mode, style)
+                        val processed = PhotoProcessor.applyStyle(raw, style)
+                        raw.recycle()
+                        val uri = PhotoProcessor.saveToGallery(
+                            getApplication<Application>(),
+                            processed,
+                            mode.label,
+                            style.displayName
+                        )
+                        processed.recycle()
+                        _lastPhotoUri.value = uri
+                        emitEvent("Saved to Photos")
                     } catch (e: Exception) {
-                        emitEvent("Capture failed: ${e.message}")
+                        Log.w(TAG, "Save failed", e)
+                        emitEvent("Save failed: ${e.message}")
                     } finally {
                         file.delete()
                         _isBusy.value = false
@@ -201,25 +212,11 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         )
     }
 
-    fun dismissPendingCapture() {
-        _pendingCapture.value = null
-    }
-
-    /** Saves the currently displayed processed image to the gallery. */
-    fun save(bitmap: Bitmap, mode: CaptureMode, style: PhotographicStyle): Uri? {
-        return try {
-            PhotoProcessor.saveToGallery(getApplication<Application>(), bitmap, mode.label, style.displayName)
-        } catch (e: Exception) {
-            emitEvent("Could not save: ${e.message}")
-            null
-        }
-    }
-
     fun toast(message: String) {
         Toast.makeText(getApplication<Application>(), message, Toast.LENGTH_SHORT).show()
     }
 
-    private fun emitEvent(message: String) {
+    fun emitEvent(message: String) {
         viewModelScope.launch { _events.emit(message) }
     }
 }

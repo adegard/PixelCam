@@ -53,15 +53,19 @@ class CameraController(
             Log.e(TAG, "Failed to initialize CameraX", e)
         }
     }
-
-    /** Whether a given vendor extension mode is available for the given lens. */
-    fun isExtensionAvailable(lensFacing: Int, mode: CameraViewModel.CaptureMode): Boolean {        val extensionMode = mode.extensionMode ?: return false
-        val manager = extensionsManager ?: return false
+    /**
+     * Whether a given vendor extension mode is available for the given lens.
+     * Returns true when the status is unknown, so modes are never stuck disabled:
+     * binding will fall back to a plain capture if the extension isn't supported.
+     */
+    fun isExtensionAvailable(lensFacing: Int, mode: CameraViewModel.CaptureMode): Boolean {
+        val extensionMode = mode.extensionMode ?: return false
+        val manager = extensionsManager ?: return true
         return try {
             manager.isExtensionAvailable(selectorFor(lensFacing), extensionMode)
         } catch (e: Exception) {
             Log.w(TAG, "Extension availability check failed for $mode", e)
-            false
+            true
         }
     }
 

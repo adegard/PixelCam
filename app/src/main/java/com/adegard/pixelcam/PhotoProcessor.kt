@@ -17,7 +17,7 @@ import java.io.File
 object PhotoProcessor {
 
     private const val MAX_DIMENSION = 4000
-    private const val JPEG_QUALITY = 92
+    private const val JPEG_QUALITY = 95
 
     /**
      * Decode the captured JPEG, downscaling so the longest edge is at most [MAX_DIMENSION],
