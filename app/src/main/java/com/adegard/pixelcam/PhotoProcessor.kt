@@ -96,7 +96,7 @@ object PhotoProcessor {
             put(MediaStore.Images.Media.HEIGHT, bitmap.height)
             put(
                 MediaStore.Images.Media.RELATIVE_PATH,
-                Environment.DIRECTORY_PICTURES + "/PixelCam"
+                Environment.DIRECTORY_DCIM + "/Camera"
             )
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }

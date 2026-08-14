@@ -2,6 +2,9 @@ package com.adegard.pixelcam
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
@@ -58,6 +61,13 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     private val _lastPhotoUri = MutableStateFlow<Uri?>(null)
     val lastPhotoUri: StateFlow<Uri?> = _lastPhotoUri.asStateFlow()
 
+    /** Reused destination bitmap for the live filtered preview. */
+    private val _filterBitmap = MutableStateFlow<Bitmap?>(null)
+    val filterBitmap: StateFlow<Bitmap?> = _filterBitmap.asStateFlow()
+
+    private val _frameTick = MutableStateFlow(0L)
+    val frameTick: StateFlow<Long> = _frameTick.asStateFlow()
+
     private val _zoomState = MutableStateFlow<ZoomState?>(null)
     val zoomState: StateFlow<ZoomState?> = _zoomState.asStateFlow()
 
@@ -100,7 +110,56 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             runCatching { controller?.bind(view, _lens.value, _mode.value) }
                 .onFailure { emitEvent("Camera error: ${it.message}") }
-                .onSuccess { observeZoom(it) }
+                .onSuccess {
+                    observeZoom(it)
+                    controller?.setFrameListener { bitmap, rotation ->
+                        renderFilterFrame(bitmap, rotation)
+                    }
+                }
+        }
+    }
+
+    /**
+     * Applies the selected photographic style to a preview frame and publishes it
+     * for the live-filter overlay. Frames are skipped for the default style so the
+     * native high-resolution preview stays untouched when no filter is active.
+     */
+    private fun renderFilterFrame(source: Bitmap, rotationDegrees: Int) {
+        try {
+            val style = _style.value
+            if (style == PhotographicStyle.STANDARD || _mode.value != CaptureMode.PHOTO) {
+                source.recycle()
+                return
+            }
+            val swapped = rotationDegrees == 90 || rotationDegrees == 270
+            val destW = if (swapped) source.height else source.width
+            val destH = if (swapped) source.width else source.height
+            val current = _filterBitmap.value
+            val target = if (current != null && current.width == destW && current.height == destH) {
+                current
+            } else {
+                Bitmap.createBitmap(destW, destH, Bitmap.Config.ARGB_8888)
+            }
+            val canvas = Canvas(target)
+            canvas.save()
+            canvas.translate(destW / 2f, destH / 2f)
+            canvas.rotate(rotationDegrees.toFloat())
+            canvas.drawBitmap(
+                source,
+                -source.width / 2f,
+                -source.height / 2f,
+                Paint().apply {
+                    colorFilter = ColorMatrixColorFilter(style.colorMatrix())
+                    isFilterBitmap = true
+                }
+            )
+            canvas.restore()
+            _filterBitmap.value = target
+            _frameTick.value += 1
+            source.recycle()
+        } catch (e: Exception) {
+            runCatching { source.recycle() }
+            Log.w(TAG, "renderFilterFrame failed", e)
         }
     }
 
@@ -138,11 +197,6 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setMode(mode: CaptureMode) {
-        val knownUnsupported = _availableModes.value[mode] == false
-        if (knownUnsupported) {
-            emitEvent("${mode.label} is not supported on this device")
-            return
-        }
         if (_mode.value == mode) return
         _mode.value = mode
         if (!isFlashSupported) _flash.value = ImageCapture.FLASH_MODE_OFF

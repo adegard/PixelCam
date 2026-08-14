@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.ImageCapture
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -53,6 +54,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -63,6 +66,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.adegard.pixelcam.CameraViewModel
 import com.adegard.pixelcam.PhotographicStyle
 import com.adegard.pixelcam.R
+import kotlin.math.roundToInt
 
 @Composable
 fun CameraScreen(viewModel: CameraViewModel = viewModel()) {
@@ -121,7 +125,6 @@ private fun CameraContent(viewModel: CameraViewModel) {
     val lens by viewModel.lens.collectAsStateWithLifecycle()
     val flash by viewModel.flash.collectAsStateWithLifecycle()
     val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
-    val availableModes by viewModel.availableModes.collectAsStateWithLifecycle()
     val zoomState by viewModel.zoomState.collectAsStateWithLifecycle()
     val lastPhotoUri by viewModel.lastPhotoUri.collectAsStateWithLifecycle()
 
@@ -161,6 +164,10 @@ private fun CameraContent(viewModel: CameraViewModel) {
             },
             modifier = Modifier.fillMaxSize()
         )
+
+        val filterActive = mode == CameraViewModel.CaptureMode.PHOTO &&
+            style != PhotographicStyle.STANDARD
+        FilterPreviewOverlay(viewModel = viewModel, active = filterActive)
 
         Column(
             modifier = Modifier
@@ -208,7 +215,6 @@ private fun CameraContent(viewModel: CameraViewModel) {
             ModeSelector(
                 modes = CameraViewModel.CaptureMode.entries,
                 selected = mode,
-                availability = availableModes,
                 onSelect = viewModel::setMode
             )
 
@@ -318,7 +324,6 @@ private fun StyleSelector(
 private fun ModeSelector(
     modes: List<CameraViewModel.CaptureMode>,
     selected: CameraViewModel.CaptureMode,
-    availability: Map<CameraViewModel.CaptureMode, Boolean>,
     onSelect: (CameraViewModel.CaptureMode) -> Unit
 ) {
     val scroll = rememberScrollState()
@@ -331,12 +336,11 @@ private fun ModeSelector(
     ) {
         Spacer(Modifier.width(12.dp))
         modes.forEach { m ->
-            val supported = availability[m] ?: true
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable(enabled = supported) { onSelect(m) }
+                    .clickable { onSelect(m) }
                     .padding(horizontal = 8.dp, vertical = 6.dp)
             ) {
                 Text(
@@ -431,6 +435,29 @@ private fun LastPhotoThumbnail(uri: Uri?, onClick: (Uri) -> Unit) {
         )
     } else {
         Spacer(Modifier.size(52.dp))
+    }
+}
+
+@Composable
+private fun FilterPreviewOverlay(viewModel: CameraViewModel, active: Boolean) {
+    if (!active) return
+    val bitmap by viewModel.filterBitmap.collectAsStateWithLifecycle()
+    val tick by viewModel.frameTick.collectAsStateWithLifecycle()
+    val bmp = bitmap ?: return
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        tick
+        val imgW = bmp.width.toFloat()
+        val imgH = bmp.height.toFloat()
+        val scale = maxOf(size.width / imgW, size.height / imgH)
+        val dstW = imgW * scale
+        val dstH = imgH * scale
+        val left = (size.width - dstW) / 2f
+        val top = (size.height - dstH) / 2f
+        drawImage(
+            image = bmp.asImageBitmap(),
+            dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
+            dstSize = IntSize(dstW.roundToInt(), dstH.roundToInt())
+        )
     }
 }
 

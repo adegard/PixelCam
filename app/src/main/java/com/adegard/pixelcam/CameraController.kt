@@ -1,13 +1,20 @@
 package com.adegard.pixelcam
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.util.Log
+import android.util.Size
 import android.view.Surface
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ExperimentalGetImage
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.extensions.ExtensionsManager
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -16,6 +23,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import java.io.File
 import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 
 /**
  * Wraps CameraX: handles camera binding and capture. When the device (e.g. a Pixel)
@@ -34,6 +42,7 @@ class CameraController(
     private var cameraProvider: ProcessCameraProvider? = null
     private var extensionsManager: ExtensionsManager? = null
     private var imageCapture: ImageCapture? = null
+    private var imageAnalysis: ImageAnalysis? = null
     private var camera: Camera? = null
 
     /** The currently bound camera, used for zoom control. */
@@ -41,6 +50,7 @@ class CameraController(
         get() = camera
 
     private val preview = Preview.Builder().build()
+    private val analysisExecutor: Executor = Executors.newSingleThreadExecutor()
 
     /** Idempotent CameraX initialization. */
     suspend fun initialize() {
@@ -82,17 +92,71 @@ class CameraController(
             .build()
         imageCapture = capture
 
+        // A live filter preview needs ImageAnalysis; vendor extensions occupy the
+        // camera stream, so the analysis feed is only bound for plain Photo mode.
+        imageAnalysis = if (mode.extensionMode == null) {
+            ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .setResolutionSelector(
+                    ResolutionSelector.Builder()
+                        .setResolutionStrategy(
+                            ResolutionStrategy(
+                                Size(1280, 720),
+                                ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER
+                            )
+                        )
+                        .build()
+                )
+                .build()
+        } else {
+            null
+        }
+
         preview.setSurfaceProvider(previewView.surfaceProvider)
 
         val selector = extensionSelector(baseSelector, mode) ?: baseSelector
         camera = try {
-            provider.bindToLifecycle(lifecycleOwner, selector, preview, capture)
+            bindUseCases(provider, lifecycleOwner, selector, preview, capture, imageAnalysis)
         } catch (e: Exception) {
             Log.w(TAG, "Extension binding failed, falling back to plain camera: $mode", e)
             provider.unbindAll()
-            provider.bindToLifecycle(lifecycleOwner, baseSelector, preview, capture)
+            bindUseCases(provider, lifecycleOwner, baseSelector, preview, capture, imageAnalysis)
         }
         return camera
+    }
+
+    private fun bindUseCases(
+        provider: ProcessCameraProvider,
+        owner: LifecycleOwner,
+        selector: CameraSelector,
+        preview: Preview,
+        capture: ImageCapture,
+        analysis: ImageAnalysis?
+    ): Camera {
+        return if (analysis != null) {
+            provider.bindToLifecycle(owner, selector, preview, capture, analysis)
+        } else {
+            provider.bindToLifecycle(owner, selector, preview, capture)
+        }
+    }
+
+    /**
+     * Feeds preview frames to [onFrame] as a sensor-oriented [Bitmap] plus its
+     * rotation in degrees. Only active in Photo mode (vendor extensions disable it).
+     */
+    fun setFrameListener(onFrame: (Bitmap, Int) -> Unit) {
+        val analysis = imageAnalysis ?: return
+        @OptIn(ExperimentalGetImage::class)
+        analysis.setAnalyzer(analysisExecutor) { imageProxy: ImageProxy ->
+            try {
+                val bitmap = imageProxy.toBitmap()
+                onFrame(bitmap, imageProxy.imageInfo.rotationDegrees)
+            } catch (e: Exception) {
+                Log.w(TAG, "Frame conversion failed", e)
+            } finally {
+                imageProxy.close()
+            }
+        }
     }
 
     private fun extensionSelector(
