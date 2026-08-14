@@ -66,7 +66,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
 
     fun initialize(lifecycleOwner: LifecycleOwner) {
         if (controller != null) return
-        val c = CameraController(getApplication(), lifecycleOwner)
+        val c = CameraController(getApplication<Application>(), lifecycleOwner)
         controller = c
         viewModelScope.launch {
             c.initialize()
@@ -126,7 +126,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         val mode = _mode.value
         val style = _style.value
         val flash = if (isFlashSupported) _flash.value else ImageCapture.FLASH_MODE_OFF
-        val file = File(getApplication().cacheDir, "pixelcam_${System.currentTimeMillis()}.jpg")
+        val file = File(getApplication<Application>().cacheDir, "pixelcam_${System.currentTimeMillis()}.jpg")
         _isBusy.value = true
 
         c.capture(
@@ -160,7 +160,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     /** Saves the currently displayed processed image to the gallery. */
     fun save(bitmap: Bitmap, mode: CaptureMode, style: PhotographicStyle): Uri? {
         return try {
-            PhotoProcessor.saveToGallery(getApplication(), bitmap, mode.label, style.displayName)
+            PhotoProcessor.saveToGallery(getApplication<Application>(), bitmap, mode.label, style.displayName)
         } catch (e: Exception) {
             emitEvent("Could not save: ${e.message}")
             null
@@ -168,7 +168,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun toast(message: String) {
-        Toast.makeText(getApplication(), message, Toast.LENGTH_SHORT).show()
+        Toast.makeText(getApplication<Application>(), message, Toast.LENGTH_SHORT).show()
     }
 
     private fun emitEvent(message: String) {
