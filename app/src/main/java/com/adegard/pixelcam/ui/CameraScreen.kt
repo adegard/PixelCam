@@ -118,8 +118,6 @@ private fun PermissionPrompt(onRequest: () -> Unit) {
 
 @Composable
 private fun CameraContent(viewModel: CameraViewModel) {
-    val context = LocalContext.current
-
     val mode by viewModel.mode.collectAsStateWithLifecycle()
     val style by viewModel.style.collectAsStateWithLifecycle()
     val lens by viewModel.lens.collectAsStateWithLifecycle()
