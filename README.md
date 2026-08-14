@@ -5,33 +5,37 @@ It mimics the "latest generation" iOS camera feel with built-in photographic
 styles (color grading) and real on-device scene modes powered by the CameraX
 vendor extensions found on Pixel devices.
 
+![PixelCam screenshot](docs/screenshot.png)
+
 ## Features
 
 - **iOS-style photographic styles** — Standard, Vibrant, Warm, Cool, Rich
-  Contrast and Mono applied as subtle color grading. Pick a style before you
-  shoot, or adjust it after capture before saving.
+  Contrast and Mono applied as subtle color grading. Styles are shown live on
+  the preview before you shoot.
 - **HDR mode** — multi-exposure high dynamic range via the CameraX extension.
 - **Night mode** — low-light multi-frame enhancement via the CameraX extension.
 - **Portrait mode** — subject-in-focus background bokeh via the CameraX BOKEH
   extension.
-- **Smart default processing** — a subtle punch (saturation + contrast + a hint
-  of warmth) applied to every shot by default.
+- **Pinch-to-zoom** with double-tap to reset.
+- **Smart default processing** — a punch (saturation + contrast + a hint of
+  warmth) applied to every shot by default.
+- **Auto-save** — every photo is saved straight to `DCIM/Camera`, no
+  confirmation needed.
 - Front / back camera switch and flash toggle.
-- Photos are saved into `Pictures/PixelCam` in your gallery, shareable from the
-  app.
 
-> If a mode's vendor extension is not available on a device (only Pixel and a
-> few other devices implement them), the app falls back to a regular high
-> quality capture and marks the mode as unsupported.
+> HDR / Night / Portrait are always selectable. On devices without the vendor
+> extensions (only Pixel and a few others implement them), the app falls back
+> to a regular high quality capture.
 
 ## Getting the APK
 
-The repo builds the APK automatically with GitHub Actions.
+The repo builds both **debug** and **release** APKs automatically with GitHub
+Actions. The release APK is signed with a debug key so it installs normally.
 
 1. Open the **Actions** tab of this repository.
 2. Select the latest **Build APK** workflow run.
-3. Download the `PixelCam-debug-apk` artifact and install the APK on your
-   device (allow "install from unknown sources").
+3. Download the `PixelCam-apks` artifact and install the APK of your choice
+   (allow "install from unknown sources").
 
 You can also run the workflow manually from the Actions tab with
 "Run workflow".
