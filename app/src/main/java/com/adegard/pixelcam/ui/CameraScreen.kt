@@ -12,6 +12,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,6 +54,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -125,6 +128,7 @@ private fun CameraContent(viewModel: CameraViewModel) {
     val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
     val pending by viewModel.pendingCapture.collectAsStateWithLifecycle()
     val availableModes by viewModel.availableModes.collectAsStateWithLifecycle()
+    val zoomState by viewModel.zoomState.collectAsStateWithLifecycle()
 
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
 
@@ -138,7 +142,21 @@ private fun CameraContent(viewModel: CameraViewModel) {
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pointerInput(Unit) {
+                detectTransformGestures { _, _, zoom, _ ->
+                    viewModel.zoomBy(zoom)
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(onDoubleTap = {
+                    viewModel.setZoom(1f)
+                })
+            }
+    ) {
         AndroidView(
             factory = { ctx ->
                 PreviewView(ctx).also { pv ->
@@ -164,6 +182,23 @@ private fun CameraContent(viewModel: CameraViewModel) {
                 onToggleFlash = viewModel::toggleFlash,
                 onFlipCamera = viewModel::flipCamera
             )
+
+            val zoomRatio = zoomState?.zoomRatio ?: 1f
+            if (zoomRatio > 1.01f) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.Black.copy(alpha = 0.5f))
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        String.format(java.util.Locale.US, "%.1fx", zoomRatio),
+                        color = Color.White,
+                        fontSize = 13.sp
+                    )
+                }
+            }
 
             Spacer(Modifier.weight(1f))
 

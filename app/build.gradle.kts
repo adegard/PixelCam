@@ -60,5 +60,6 @@ dependencies {
     implementation(libs.androidx.camerax.extensions)
 
     implementation(libs.androidx.concurrent.futures.ktx)
+    implementation(libs.androidx.exifinterface)
     implementation(libs.kotlinx.coroutines.android)
 }

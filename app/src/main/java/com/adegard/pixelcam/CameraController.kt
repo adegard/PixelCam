@@ -3,6 +3,7 @@ package com.adegard.pixelcam
 import android.content.Context
 import android.util.Log
 import android.view.Surface
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -33,6 +34,11 @@ class CameraController(
     private var cameraProvider: ProcessCameraProvider? = null
     private var extensionsManager: ExtensionsManager? = null
     private var imageCapture: ImageCapture? = null
+    private var camera: Camera? = null
+
+    /** The currently bound camera, used for zoom control. */
+    val currentCamera: Camera?
+        get() = camera
 
     private val preview = Preview.Builder().build()
 
@@ -49,8 +55,7 @@ class CameraController(
     }
 
     /** Whether a given vendor extension mode is available for the given lens. */
-    fun isExtensionAvailable(lensFacing: Int, mode: CameraViewModel.CaptureMode): Boolean {
-        val extensionMode = mode.extensionMode ?: return false
+    fun isExtensionAvailable(lensFacing: Int, mode: CameraViewModel.CaptureMode): Boolean {        val extensionMode = mode.extensionMode ?: return false
         val manager = extensionsManager ?: return false
         return try {
             manager.isExtensionAvailable(selectorFor(lensFacing), extensionMode)
@@ -61,9 +66,9 @@ class CameraController(
     }
 
     /** (Re)binds preview + image capture for the given lens and capture mode. */
-    suspend fun bind(previewView: PreviewView, lensFacing: Int, mode: CameraViewModel.CaptureMode) {
+    suspend fun bind(previewView: PreviewView, lensFacing: Int, mode: CameraViewModel.CaptureMode): Camera? {
         initialize()
-        val provider = cameraProvider ?: return
+        val provider = cameraProvider ?: return null
         val baseSelector = selectorFor(lensFacing)
         provider.unbindAll()
 
@@ -76,13 +81,14 @@ class CameraController(
         preview.setSurfaceProvider(previewView.surfaceProvider)
 
         val selector = extensionSelector(baseSelector, mode) ?: baseSelector
-        try {
+        camera = try {
             provider.bindToLifecycle(lifecycleOwner, selector, preview, capture)
         } catch (e: Exception) {
             Log.w(TAG, "Extension binding failed, falling back to plain camera: $mode", e)
             provider.unbindAll()
             provider.bindToLifecycle(lifecycleOwner, baseSelector, preview, capture)
         }
+        return camera
     }
 
     private fun extensionSelector(

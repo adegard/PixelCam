@@ -3,13 +3,16 @@ package com.adegard.pixelcam
 import android.app.Application
 import android.graphics.Bitmap
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
+import androidx.camera.core.ZoomState
 import androidx.camera.extensions.ExtensionMode
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.Observer
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -21,6 +24,10 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 class CameraViewModel(application: Application) : AndroidViewModel(application) {
+
+    companion object {
+        private const val TAG = "CameraViewModel"
+    }
 
     enum class CaptureMode(val label: String, val extensionMode: Int?) {
         PHOTO("Photo", null),
@@ -56,10 +63,14 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     private val _pendingCapture = MutableStateFlow<PendingCapture?>(null)
     val pendingCapture: StateFlow<PendingCapture?> = _pendingCapture.asStateFlow()
 
+    private val _zoomState = MutableStateFlow<ZoomState?>(null)
+    val zoomState: StateFlow<ZoomState?> = _zoomState.asStateFlow()
+
     private val _events = MutableSharedFlow<String>()
     val events = _events.asSharedFlow()
 
     private var controller: CameraController? = null
+    private var zoomObserver: Observer<ZoomState>? = null
 
     val isFlashSupported: Boolean
         get() = _mode.value == CaptureMode.PHOTO
@@ -86,7 +97,41 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
 
     fun bindPreview(view: PreviewView) {
         viewModelScope.launch {
-            controller?.bind(view, _lens.value, _mode.value)
+            val camera = controller?.bind(view, _lens.value, _mode.value)
+            observeZoom(camera)
+        }
+    }
+
+    private fun observeZoom(camera: androidx.camera.core.Camera?) {
+        zoomObserver?.let { old ->
+            _lastZoomLiveData?.removeObserver(old)
+        }
+        _lastZoomLiveData = camera?.cameraInfo?.zoomState
+        if (_lastZoomLiveData != null) {
+            zoomObserver = Observer<ZoomState> { state -> _zoomState.value = state }
+            _lastZoomLiveData?.observeForever(zoomObserver)
+        } else {
+            _zoomState.value = null
+        }
+    }
+
+    private var _lastZoomLiveData: androidx.lifecycle.LiveData<ZoomState>? = null
+
+    /** Applies a zoom scale factor (e.g. from a pinch gesture) clamped to the camera range. */
+    fun zoomBy(scale: Float) {
+        val state = _zoomState.value ?: return
+        val target = state.zoomRatio * scale
+        setZoom(target)
+    }
+
+    /** Sets an absolute zoom ratio, clamped to the camera range. */
+    fun setZoom(ratio: Float) {
+        val state = _zoomState.value ?: return
+        val target = ratio.coerceIn(state.minZoomRatio, state.maxZoomRatio)
+        viewModelScope.launch {
+            runCatching {
+                controller?.currentCamera?.cameraControl?.setZoomRatio(target)
+            }.onFailure { Log.w(TAG, "setZoomRatio failed", it) }
         }
     }
 
