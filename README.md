@@ -62,3 +62,7 @@ The APK is written to `app/build/outputs/apk/debug/`.
 ## License
 
 Apache-2.0
+
+---
+
+For an overview of all my other projects, see https://adegard.github.io/blog/
