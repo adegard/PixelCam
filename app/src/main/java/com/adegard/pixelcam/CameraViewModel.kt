@@ -68,6 +68,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     private val _frameTick = MutableStateFlow(0L)
     val frameTick: StateFlow<Long> = _frameTick.asStateFlow()
 
+    private val _qrResult = MutableStateFlow<String?>(null)
+    val qrResult: StateFlow<String?> = _qrResult.asStateFlow()
+
     private val _zoomState = MutableStateFlow<ZoomState?>(null)
     val zoomState: StateFlow<ZoomState?> = _zoomState.asStateFlow()
 
@@ -75,6 +78,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     val events = _events.asSharedFlow()
 
     private var controller: CameraController? = null
+    private var qrScanner: QrScanner? = null
     private var zoomObserver: Observer<ZoomState>? = null
     private var lastZoomLiveData: androidx.lifecycle.LiveData<ZoomState>? = null
 
@@ -112,8 +116,12 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 .onFailure { emitEvent("Camera error: ${it.message}") }
                 .onSuccess {
                     observeZoom(it)
+                    qrScanner = QrScanner()
                     controller?.setFrameListener { bitmap, rotation ->
                         renderFilterFrame(bitmap, rotation)
+                        qrScanner?.process(bitmap) { value ->
+                            _qrResult.value = value
+                        }
                     }
                 }
         }
@@ -264,6 +272,10 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 emitEvent("Capture failed: ${e.message}")
             }
         )
+    }
+
+    fun dismissQrResult() {
+        _qrResult.value = null
     }
 
     fun toast(message: String) {

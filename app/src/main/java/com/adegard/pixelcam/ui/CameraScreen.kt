@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -127,6 +128,7 @@ private fun CameraContent(viewModel: CameraViewModel) {
     val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
     val zoomState by viewModel.zoomState.collectAsStateWithLifecycle()
     val lastPhotoUri by viewModel.lastPhotoUri.collectAsStateWithLifecycle()
+    val qrResult by viewModel.qrResult.collectAsStateWithLifecycle()
 
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
 
@@ -228,6 +230,10 @@ private fun CameraContent(viewModel: CameraViewModel) {
             )
 
             Spacer(Modifier.height(16.dp))
+        }
+
+        qrResult?.let { value ->
+            QrBanner(value = value, onDismiss = { viewModel.dismissQrResult() })
         }
     }
 }
@@ -467,4 +473,46 @@ private fun openPhoto(context: android.content.Context, uri: Uri) {
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(intent)
+}
+
+@Composable
+private fun QrBanner(value: String, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val isUrl = value.startsWith("http://") || value.startsWith("https://")
+    Surface(
+        color = Color.Black.copy(alpha = 0.85f),
+        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("QR Code detected", color = Color(0xFF9FC4FF), fontSize = 12.sp)
+                Text(
+                    value,
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    maxLines = 3
+                )
+            }
+            if (isUrl) {
+                Button(
+                    onClick = {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(value)))
+                    },
+                    modifier = Modifier.padding(start = 12.dp)
+                ) {
+                    Text("Open")
+                }
+            }
+            IconButton(onClick = onDismiss) {
+                Text("✕", color = Color.White, fontSize = 18.sp)
+            }
+        }
+    }
 }

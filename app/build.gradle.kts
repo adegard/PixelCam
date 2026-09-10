@@ -63,5 +63,6 @@ dependencies {
 
     implementation(libs.androidx.concurrent.futures.ktx)
     implementation(libs.androidx.exifinterface)
+    implementation(libs.mlkit.barcode)
     implementation(libs.kotlinx.coroutines.android)
 }
