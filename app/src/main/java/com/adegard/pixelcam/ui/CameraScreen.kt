@@ -21,6 +21,7 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -496,7 +497,7 @@ private fun openPhoto(context: android.content.Context, uri: Uri) {
 }
 
 @Composable
-private fun QrBanner(value: String, onDismiss: () -> Unit) {
+private fun BoxScope.QrBanner(value: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val isUrl = value.startsWith("http://") || value.startsWith("https://")
     Surface(
