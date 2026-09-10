@@ -36,12 +36,15 @@ vendor extensions found on Pixel devices.
 
 ## Getting the APK
 
-The repo builds **debug** APKs automatically with GitHub
-Actions. The release APK is signed with a debug key so it installs normally.
+The repo builds **debug** and **release** APKs automatically with GitHub
+Actions on every push. The release APK is signed with a debug key so it
+installs like a normal app.
 
-1. Open the **Release** tab of this repository.
-2. Download the app-debug.apk artifact and install the APK of your choice
-   (allow "install from unknown sources").
+1. Open the **Actions** tab of this repository.
+2. Select the latest **Build APK** workflow run.
+3. Download the `PixelCam-apks` artifact — it contains both `app-debug.apk`
+   and `app-release.apk`. Install the one you want (allow "install from
+   unknown sources").
 
 ## Building locally
 
