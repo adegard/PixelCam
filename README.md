@@ -2,6 +2,8 @@
 
 # PixelCam
 
+![Build](https://github.com/adegard/PixelCam/actions/workflows/build.yml/badge.svg)
+
 An Android camera app that takes better pictures, especially on Pixel phones.
 It mimics the "latest generation" iOS camera feel with built-in photographic
 styles (color grading) and real on-device scene modes powered by the CameraX
