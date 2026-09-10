@@ -1,15 +1,16 @@
 package com.adegard.pixelcam
 
-import android.graphics.Bitmap
+import androidx.camera.core.ImageProxy
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 
 /**
- * Wraps ML Kit barcode scanning. Each call to [process] sends a frame to the
- * on-device scanner and invokes [onResult] with the first detected barcode
- * (if any). Duplicate consecutive results are suppressed.
+ * Wraps ML Kit barcode scanning. [processFrame] feeds a CameraX frame to the
+ * on-device scanner and invokes [onResult] when a *new* barcode value is
+ * detected (duplicate suppression). The ImageProxy is closed once ML Kit
+ * finishes processing it.
  */
 class QrScanner {
 
@@ -25,13 +26,19 @@ class QrScanner {
 
     private var lastRawValue: String? = null
 
-    /**
-     * Process a [bitmap] for barcodes. The result callback is only invoked
-     * when a *new* barcode value is detected (duplicates are skipped).
-     */
-    fun process(bitmap: Bitmap, onResult: (String) -> Unit) {
-        val image = InputImage.fromBitmap(bitmap, 0)
+    /** Processes a camera frame; the proxy is closed when the task completes. */
+    fun processFrame(imageProxy: ImageProxy, onResult: (String) -> Unit) {
+        val mediaImage = imageProxy.image
+        if (mediaImage == null) {
+            imageProxy.close()
+            return
+        }
+        val image = InputImage.fromMediaImage(
+            mediaImage,
+            imageProxy.imageInfo.rotationDegrees
+        )
         scanner.process(image)
+            .addOnCompleteListener { imageProxy.close() }
             .addOnSuccessListener { barcodes ->
                 val value = barcodes.firstOrNull()?.rawValue
                 if (value != null && value != lastRawValue) {
@@ -41,7 +48,12 @@ class QrScanner {
             }
     }
 
-    /** Call when the camera is closed / binding released. */
+    /** Clears duplicate suppression so a code can be scanned again. */
+    fun reset() {
+        lastRawValue = null
+    }
+
+    /** Call when the camera binding is released. */
     fun close() {
         scanner.close()
     }

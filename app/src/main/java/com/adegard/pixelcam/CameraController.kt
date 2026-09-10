@@ -141,21 +141,34 @@ class CameraController(
     }
 
     /**
-     * Feeds preview frames to [onFrame] as a sensor-oriented [Bitmap] plus its
-     * rotation in degrees. Only active in Photo mode (vendor extensions disable it).
+     * Feeds preview frames to [onBitmap] (a sensor-oriented [Bitmap] plus its
+     * rotation in degrees, recycled by this method after the callback) and hands
+     * the raw camera frame to [onMedia] for QR analysis. Only active in Photo
+     * mode (vendor extensions disable it).
      */
-    fun setFrameListener(onFrame: (Bitmap, Int) -> Unit) {
+    fun setFrameListener(
+        onBitmap: (Bitmap, Int) -> Unit,
+        onMedia: (ImageProxy) -> Unit
+    ) {
         val analysis = imageAnalysis ?: return
         @OptIn(ExperimentalGetImage::class)
         analysis.setAnalyzer(analysisExecutor) { imageProxy: ImageProxy ->
-            try {
-                val bitmap = imageProxy.toBitmap()
-                onFrame(bitmap, imageProxy.imageInfo.rotationDegrees)
+            val bitmap = try {
+                imageProxy.toBitmap()
             } catch (e: Exception) {
                 Log.w(TAG, "Frame conversion failed", e)
-            } finally {
-                imageProxy.close()
+                null
             }
+            if (bitmap != null) {
+                try {
+                    onBitmap(bitmap, imageProxy.imageInfo.rotationDegrees)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Frame render failed", e)
+                } finally {
+                    bitmap.recycle()
+                }
+            }
+            onMedia(imageProxy)
         }
     }
 

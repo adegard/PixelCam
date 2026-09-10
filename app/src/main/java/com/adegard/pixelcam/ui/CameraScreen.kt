@@ -187,6 +187,7 @@ private fun CameraContent(viewModel: CameraViewModel) {
             TopBar(
                 showFlash = viewModel.isFlashSupported,
                 flashOn = flash == ImageCapture.FLASH_MODE_ON,
+                qrActive = mode == CameraViewModel.CaptureMode.PHOTO,
                 onToggleFlash = viewModel::toggleFlash,
                 onFlipCamera = viewModel::flipCamera
             )
@@ -242,6 +243,7 @@ private fun CameraContent(viewModel: CameraViewModel) {
 private fun TopBar(
     showFlash: Boolean,
     flashOn: Boolean,
+    qrActive: Boolean,
     onToggleFlash: () -> Unit,
     onFlipCamera: () -> Unit
 ) {
@@ -260,6 +262,24 @@ private fun TopBar(
             modifier = Modifier.padding(start = 8.dp)
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
+            if (qrActive) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF4CD964))
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("QR", color = Color.White, fontSize = 12.sp)
+                }
+            }
             if (showFlash) {
                 IconButton(onClick = onToggleFlash) {
                     Image(

@@ -117,12 +117,21 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 .onSuccess {
                     observeZoom(it)
                     qrScanner = QrScanner()
-                    controller?.setFrameListener { bitmap, rotation ->
-                        renderFilterFrame(bitmap, rotation)
-                        qrScanner?.process(bitmap) { value ->
-                            _qrResult.value = value
+                    controller?.setFrameListener(
+                        onBitmap = { bitmap, rotation ->
+                            renderFilterFrame(bitmap, rotation)
+                        },
+                        onMedia = { imageProxy ->
+                            val scanner = qrScanner
+                            if (scanner != null) {
+                                scanner.processFrame(imageProxy) { value ->
+                                    _qrResult.value = value
+                                }
+                            } else {
+                                imageProxy.close()
+                            }
                         }
-                    }
+                    )
                 }
         }
     }
@@ -133,12 +142,11 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
      * native high-resolution preview stays untouched when no filter is active.
      */
     private fun renderFilterFrame(source: Bitmap, rotationDegrees: Int) {
+        val style = _style.value
+        if (style == PhotographicStyle.STANDARD || _mode.value != CaptureMode.PHOTO) {
+            return
+        }
         try {
-            val style = _style.value
-            if (style == PhotographicStyle.STANDARD || _mode.value != CaptureMode.PHOTO) {
-                source.recycle()
-                return
-            }
             val swapped = rotationDegrees == 90 || rotationDegrees == 270
             val destW = if (swapped) source.height else source.width
             val destH = if (swapped) source.width else source.height
@@ -164,9 +172,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             canvas.restore()
             _filterBitmap.value = target
             _frameTick.value += 1
-            source.recycle()
         } catch (e: Exception) {
-            runCatching { source.recycle() }
             Log.w(TAG, "renderFilterFrame failed", e)
         }
     }
@@ -276,6 +282,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
 
     fun dismissQrResult() {
         _qrResult.value = null
+        qrScanner?.reset()
     }
 
     fun toast(message: String) {

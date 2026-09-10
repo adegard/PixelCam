@@ -21,6 +21,9 @@ vendor extensions found on Pixel devices.
 - **Portrait mode** — subject-in-focus background bokeh via the CameraX BOKEH
   extension.
 - **Pinch-to-zoom** with double-tap to reset.
+- **QR code scanning** — QR / Aztec / Data Matrix codes are detected live (green
+  "QR" indicator in Photo mode) and a banner shows the decoded value with an
+  "Open" button for URLs.
 - **Smart default processing** — a punch (saturation + contrast + a hint of
   warmth) applied to every shot by default.
 - **Auto-save** — every photo is saved straight to `DCIM/Camera`, no
